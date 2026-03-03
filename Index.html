@@ -1,1 +1,537 @@
-index.html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=0.7" />
+<title>Asset Manager — Extract & Attach Images</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root { --brand:#0056b3; --accent:#28a745; --bg:#eef2f7; --card:#fff; }
+  html,body{height:100%;margin:0;font-family:Inter,Segoe UI,Arial;background:var(--bg);color:#1f2937;}
+  header{background:linear-gradient(135deg,var(--brand),#003f80);color:#fff;padding:20px 22px;border-radius:12px;margin:18px;text-align:center;box-shadow:0 8px 22px rgba(0,0,0,.25);font-size:1.5rem;}
+  main{max-width:1200px;margin:0 auto;padding:22px;background:var(--card);border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.1);}
+  .controls{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:16px;}
+  input[type=file]{padding:10px;border-radius:10px;border:1px solid #cfd8e3;background:#fff;box-shadow:inset 0 1px 3px rgba(0,0,0,.08);}
+  button.primary,.small,.assetBtn{position:relative;border:none;border-radius:14px;font-weight:700;cursor:pointer;transition:all .2s ease;box-shadow:0 6px 0 #14532d,0 6px 15px rgba(0,0,0,.25);}
+  button.primary{background:linear-gradient(145deg,#34d399,#059669);color:white;padding:14px 22px;font-size:1rem;}
+  .small{background:linear-gradient(145deg,#60a5fa,#2563eb);color:#fff;font-size:.9rem;padding:10px 14px;}
+  #assetContainer{display:flex;flex-direction:column;gap:22px;margin-top:18px;}
+  .categoryBlock{padding:14px;border-radius:12px;border:1px solid #e0e7ff;background:linear-gradient(180deg,#ffffff,#f9fafb);box-shadow:0 4px 14px rgba(0,0,0,.05);}
+  .categoryTitle{display:flex;align-items:center;gap:14px;margin-bottom:14px;font-size:1.1rem;color:var(--brand);font-weight:800;border-bottom:1px dashed #e6eef8;padding-bottom:10px;}
+  .assetGrid{display:flex;flex-wrap:wrap;gap:18px;padding-top:12px;}
+  .assetBtn{min-width:180px;padding:20px 24px;background:linear-gradient(145deg,#10b981,#047857);color:#fff;font-size:1.1rem;box-shadow:0 6px 0 #064e3b,0 6px 20px rgba(0,0,0,.25);}
+  .muted{color:#6b7280;font-size:.95rem;}
+  .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1200;align-items:center;justify-content:center;padding:20px;}
+  .modal.show{display:flex;}
+  .modalCard{width:97%;max-width:1120px;height:92%;background:#fff;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 40px rgba(0,0,0,.3);}
+  .modalHeader{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #eee;}
+  .modalBody{padding:16px;overflow:auto;flex:1;}
+  .thumbBox{display:inline-block;margin:8px;border:1px solid #ddd;padding:6px;border-radius:6px;position:relative;}
+  .thumb{display:block;width:140px;height:90px;object-fit:cover;border-radius:6px;}
+  .thumbRemove{position:absolute;top:4px;right:4px;background:#fff;border-radius:50%;border:1px solid #ccc;padding:2px 6px;cursor:pointer;}
+  .fileCard{display:inline-block;margin:8px;border:1px solid #ddd;padding:6px;border-radius:6px;width:150px;text-align:center;}
+  .fileCard img{width:120px;height:80px;object-fit:cover;border-radius:6px;display:block;margin:0 auto 6px;}
+  .fileCheckbox{display:flex;align-items:center;gap:6px;justify-content:center;}
+</style>
+</head>
+<body>
+<header><strong>Service Engineer — Asset Visual Manager</strong></header>
+<main>
+  <div class="controls">
+    <input id="excelInput" type="file" accept=".xlsx,.xls" />
+    <button id="extractBtn" class="primary" disabled>Extract (asset + description)</button>
+    <div class="controls" style="margin-top:10px;">
+      <button id="exportAllBtn" class="small">Export All (.daf)</button>
+      <input id="importDafInput" type="file" accept=".daf" style="display:none;">
+      <button id="importDafBtn" class="small">Import .daf</button>
+      <button id="sendEmailBtn" class="small">Send to Customer Support</button>
+    </div>
+    <div class="muted">Select an Excel file (first sheet parsed). Extraction finds asset id patterns (e.g. WDE1234) and captures row description.</div>
+  </div>
+
+  <div id="assetContainer"><div class="muted">After extraction, asset buttons will appear here.</div></div>
+</main>
+
+<!-- Asset Modal (required by script) -->
+<div id="assetModal" class="modal" aria-hidden="true">
+  <div class="modalCard" role="dialog" aria-modal="true">
+    <div class="modalHeader">
+      <div><strong id="modalTitle">Asset</strong></div>
+      <div id="modalHeaderControls">
+        <!-- export button will be appended here -->
+        <button id="closeAssetBtn" class="small">Close</button>
+      </div>
+    </div>
+    <div class="modalBody">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:260px;">
+          <label>Asset ID</label>
+          <input id="assetId" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;margin-bottom:8px;">
+          <label>Description</label>
+          <textarea id="assetFullDesc" rows="4" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;"></textarea>
+        </div>
+<hr>
+<div>
+  <strong>Camera</strong>
+  <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+    <button id="openCamera" class="small">Open Camera</button>
+    <button id="takePhoto" class="small" style="display:none;">Take Photo</button>
+    <button id="stopCamera" class="small" style="display:none;">Stop Camera</button>
+  </div>
+  <video id="cameraView" autoplay playsinline style="margin-top:10px; width:100%; max-height:280px; display:none; border-radius:8px; background:#000;"></video>
+</div>
+        <div style="flex:1;min-width:260px;">
+          <label>Engineer Report</label>
+          <textarea id="engineerReport" rows="4" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;"></textarea>
+          <div style="margin-top:10px;">
+            <button id="saveAssetBtn" class="small">Save</button>
+            <button id="clearAttachments" class="small">Clear Attachments</button>
+            <button id="attachFromFilesBtn" class="small">Attach From Files</button>
+          </div>
+        </div>
+      </div>
+      <hr>
+      <div>
+        <strong>Attachments</strong> <span id="savedInfo" class="muted">Attachments: 0</span>
+        <div id="attachments" style="margin-top:12px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- File picker modal -->
+<div id="filePickerModal" class="modal" aria-hidden="true">
+  <div class="modalCard">
+    <div class="modalHeader">
+      <div><strong>Select files</strong></div>
+      <div><button id="closeFilePicker" class="small">Close</button></div>
+    </div>
+    <div class="modalBody">
+      <input id="filePickerInput" type="file" accept="image/*" multiple>
+      <div id="filePickerGrid" style="margin-top:12px;"></div>
+      <div style="margin-top:12px;">
+        <button id="attachSelected" class="small">Attach selected</button>
+        <button id="cancelFilePicker" class="small">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* --- DOM references (safe getters) --- */
+const $ = id => document.getElementById(id);
+const excelInput = $('excelInput');
+const extractBtn = $('extractBtn');
+const assetContainer = $('assetContainer');
+
+const assetModal = $('assetModal');
+const modalTitle = $('modalTitle');
+const assetIdInput = $('assetId');
+const assetFullDesc = $('assetFullDesc');
+const engineerReport = $('engineerReport');
+const attachmentsDiv = $('attachments');
+const attachFromFilesBtn = $('attachFromFilesBtn');
+const closeAssetBtn = $('closeAssetBtn');
+const saveAssetBtn = $('saveAssetBtn');
+const clearAttachmentsBtn = $('clearAttachments');
+const savedInfo = $('savedInfo');
+const filePickerModal = $('filePickerModal');
+const filePickerInput = $('filePickerInput');
+const filePickerGrid = $('filePickerGrid');
+const attachSelected = $('attachSelected');
+const closeFilePicker = $('closeFilePicker');
+const cancelFilePicker = $('cancelFilePicker');
+
+const exportAllBtn = $('exportAllBtn');
+const importDafBtn = $('importDafBtn');
+const importDafInput = $('importDafInput');
+const sendEmailBtn = $('sendEmailBtn');
+
+/* App state */
+let assetsMap = {};
+let currentAsset = null;
+let cameraStream = null;
+
+/* regex */
+const assetRegex = /[A-Z]{0,4}\d{2,6}/g;
+
+/* safe event hookup utility */
+function bindIf(el, ev, fn) { if (el) el.addEventListener(ev, fn); }
+
+/* enable extract button when file selected */
+bindIf(excelInput, 'change', () => { extractBtn.disabled = !excelInput.files.length; });
+
+/* Extract handler */
+bindIf(extractBtn, 'click', () => {
+  const file = excelInput.files && excelInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      assetsMap = {};
+      if (!rows.length) { assetContainer.innerHTML = '<div class="muted">Sheet empty.</div>'; return; }
+
+      function findAssetColumnIndex(rows) {
+        const header = rows[0].map(c => String(c).trim());
+        for (let i=0;i<header.length;i++){
+          const h = header[i].toLowerCase();
+          if (/asset\s*no|asset\s*id|asset\s*number|assetno|assetid|asset/i.test(h)) return i;
+        }
+        const counts = new Array(rows[0].length).fill(0);
+        for (let r=0;r<rows.length;r++){
+          for (let c=0;c<rows[r].length;c++){
+            const cell = String(rows[r][c]).trim();
+            if (!cell) continue;
+            const m = cell.match(assetRegex);
+            if (m) counts[c] += m.length;
+          }
+        }
+        let max=0, idx=-1;
+        for (let i=0;i<counts.length;i++){ if (counts[i]>max){ max=counts[i]; idx=i; } }
+        if (idx>=0 && max>0) return idx;
+        return -1;
+      }
+
+      const assetColIndex = findAssetColumnIndex(rows);
+
+      rows.forEach((row, rIdx) => {
+        if (rIdx === 0 && assetColIndex >= 0) {
+          const headerCell = String(row[assetColIndex] || '').trim();
+          if (/asset\s*no|asset\s*id|asset\s*number|assetno|assetid|asset/i.test(headerCell.toLowerCase())) return;
+        }
+        if (assetColIndex >= 0) {
+          const cell = String(row[assetColIndex] || '').trim();
+          if (!cell) return;
+          const matches = cell.match(assetRegex);
+          if (!matches) return;
+          matches.forEach(m => {
+            const key = m.toUpperCase();
+            const descParts = [];
+            for (let j=0;j<row.length;j++){ if (j===assetColIndex) continue; const rcell=String(row[j]).trim(); if (rcell) descParts.push(rcell); }
+            const description = descParts.join(' | ') || row.map(c=>String(c).trim()).filter(Boolean).join(' | ');
+            if (!assetsMap[key]) assetsMap[key] = { description, report:'', attachments:[] };
+            else if (!assetsMap[key].description) assetsMap[key].description = description;
+          });
+        } else {
+          for (let i=0;i<row.length;i++){
+            const cell = String(row[i]).trim();
+            if (!cell) continue;
+            const matches = cell.match(assetRegex);
+            if (!matches) continue;
+            matches.forEach(m => {
+              const key = m.toUpperCase();
+              let descParts = [];
+              for (let j=0;j<row.length;j++){ if (j===i) continue; const rcell=String(row[j]).trim(); if (rcell) descParts.push(rcell); }
+              const description = descParts.join(' | ') || row.map(c=>String(c).trim()).filter(Boolean).join(' | ');
+              if (!assetsMap[key]) assetsMap[key] = { description, report:'', attachments:[] };
+              else if (!assetsMap[key].description) assetsMap[key].description = description;
+            });
+          }
+        }
+      });
+
+      renderAssetButtons();
+    } catch (err) {
+      alert('Error parsing Excel file: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+/* Categorised render (keeps your categorisation) */
+function renderAssetButtons(){
+  const keys = Object.keys(assetsMap);
+  if (!keys.length) { assetContainer.innerHTML = '<div class="muted">No assets found in sheet.</div>'; return; }
+  keys.sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  const categories = {
+    "15xx": k => /^\D*15\d{2}$/.test(k),
+    "20xx": k => /^\D*20\d{2}$/.test(k),
+    "25xx": k => /^\D*25\d{2}$/.test(k),
+    "30xx": k => /^\D*30\d{2}$/.test(k),
+    "34xx": k => /^\D*34\d{2}$/.test(k),
+    "LT": k => /^LT/i.test(k),
+    "Other": k => true
+  };
+  const grouped = {};
+  for (const [label, fn] of Object.entries(categories)) grouped[label] = keys.filter(fn);
+  assetContainer.innerHTML = '';
+  for (const [cat, ids] of Object.entries(grouped)){
+    if (!ids.length) continue;
+    const block = document.createElement('div'); block.className='categoryBlock'; block.style.marginBottom='16px';
+    const title = document.createElement('div'); title.className='categoryTitle'; title.textContent = cat; block.appendChild(title);
+    const grid = document.createElement('div'); grid.className='assetGrid';
+    ids.forEach(assetId => {
+      const btn = document.createElement('button'); btn.className = 'assetBtn'; btn.textContent = assetId;
+      btn.addEventListener('click', () => openAssetModal(assetId));
+      grid.appendChild(btn);
+    });
+    block.appendChild(grid);
+    assetContainer.appendChild(block);
+  }
+}
+
+/* Open asset modal and populate */
+function openAssetModal(assetId){
+  currentAsset = assetId;
+  const data = assetsMap[assetId] || { description:'', report:'', attachments:[] };
+  if (modalTitle) modalTitle.textContent = `Asset: ${assetId}`;
+  if (assetIdInput) assetIdInput.value = assetId;
+  if (assetFullDesc) assetFullDesc.value = data.description || '';
+  if (engineerReport) engineerReport.value = data.report || '';
+  if (attachmentsDiv) {
+    attachmentsDiv.innerHTML = '';
+    (data.attachments || []).forEach((att, idx) => addAttachmentThumbnail(att.url, att.name, idx));
+  }
+  if (savedInfo) savedInfo.textContent = `Attachments: ${(data.attachments||[]).length}`;
+  if (assetModal) showModal(assetModal);
+}
+
+/* modal show/hide */
+function showModal(el){ if (!el) return; el.classList.add('show'); el.setAttribute('aria-hidden','false'); document.body.style.overflow='hidden'; }
+function hideModal(el){ if (!el) return; el.classList.remove('show'); el.setAttribute('aria-hidden','true'); document.body.style.overflow=''; }
+
+/* attachments UI */
+function addAttachmentThumbnail(url, name, idxOverride){
+  if (!attachmentsDiv) return;
+  const wrap = document.createElement('div'); wrap.className='thumbBox';
+  const img = document.createElement('img'); img.className='thumb'; img.src = url; img.alt = name || 'attachment';
+  const rem = document.createElement('button'); rem.className='thumbRemove'; rem.textContent='✕'; rem.title='Remove this image';
+  rem.addEventListener('click', ()=>{
+    const list = assetsMap[currentAsset] && assetsMap[currentAsset].attachments ? assetsMap[currentAsset].attachments : [];
+    const idx = list.findIndex(a=>a.url===url && a.name===name);
+    if (idx>=0) list.splice(idx,1);
+    if (attachmentsDiv.contains(wrap)) attachmentsDiv.removeChild(wrap);
+    if (savedInfo) savedInfo.textContent = `Attachments: ${list.length}`;
+  });
+  wrap.appendChild(img); wrap.appendChild(rem); attachmentsDiv.appendChild(wrap);
+}
+
+/* Save asset button */
+bindIf(saveAssetBtn,'click', ()=>{
+  if (!currentAsset) return alert('No asset open.');
+  if (!assetsMap[currentAsset]) assetsMap[currentAsset] = { description:'', report:'', attachments:[] };
+  assetsMap[currentAsset].description = assetFullDesc ? assetFullDesc.value : assetsMap[currentAsset].description;
+  assetsMap[currentAsset].report = engineerReport ? engineerReport.value : assetsMap[currentAsset].report;
+  if (savedInfo) savedInfo.textContent = `Attachments: ${assetsMap[currentAsset].attachments.length}`;
+  alert(`Saved ${currentAsset} (attachments: ${assetsMap[currentAsset].attachments.length}) — ready for upload/rename.`);
+  saveToLocal();
+});
+
+/* Clear attachments */
+bindIf(clearAttachmentsBtn,'click', ()=>{
+  if (!currentAsset) return;
+  if (!assetsMap[currentAsset]) assetsMap[currentAsset] = { description:'', report:'', attachments:[] };
+  assetsMap[currentAsset].attachments = [];
+  if (attachmentsDiv) attachmentsDiv.innerHTML = '';
+  if (savedInfo) savedInfo.textContent = 'Attachments cleared';
+  saveToLocal();
+});
+
+/* Close modal */
+bindIf(closeAssetBtn,'click', ()=>{ hideModal(assetModal); stopCamera(); });
+
+/* File picker open/close */
+bindIf(attachFromFilesBtn,'click', ()=>{ if (filePickerGrid) filePickerGrid.innerHTML=''; if (filePickerInput) filePickerInput.value=''; showModal(filePickerModal); });
+bindIf(closeFilePicker,'click', ()=> hideModal(filePickerModal));
+bindIf(cancelFilePicker,'click', ()=> hideModal(filePickerModal));
+
+/* File picker change: show cards */
+bindIf(filePickerInput,'change', (ev)=>{
+  const files = Array.from(ev.target.files || []);
+  if (filePickerGrid) filePickerGrid.innerHTML = '';
+  files.forEach((f, idx)=>{
+    const card = document.createElement('div'); card.className='fileCard';
+    const img = document.createElement('img'); img.src = URL.createObjectURL(f); img.alt = f.name;
+    const cbWrap = document.createElement('div'); cbWrap.className='fileCheckbox';
+    const cb = document.createElement('input'); cb.type='checkbox'; cb.dataset.index=idx; cb.checked=true;
+    const label = document.createElement('div'); label.textContent = f.name.length>22 ? (f.name.slice(0,20)+'...') : f.name;
+    cbWrap.appendChild(cb); cbWrap.appendChild(label);
+    card.appendChild(img); card.appendChild(cbWrap);
+    card._file = f;
+    if (filePickerGrid) filePickerGrid.appendChild(card);
+  });
+});
+
+/* Attach selected from picker */
+bindIf(attachSelected,'click', ()=>{
+  if (!currentAsset) { alert('Open an asset first to attach images.'); hideModal(filePickerModal); return; }
+  const cards = filePickerGrid ? Array.from(filePickerGrid.querySelectorAll('.fileCard')) : [];
+  let attached=0;
+  cards.forEach(card=>{
+    const cb = card.querySelector('input[type=checkbox]');
+    if (cb && cb.checked){
+      const file = card._file;
+      const url = URL.createObjectURL(file);
+      const filename = `${currentAsset}-${file.name}`;
+      if (!assetsMap[currentAsset]) assetsMap[currentAsset] = { description:'', report:'', attachments:[] };
+      assetsMap[currentAsset].attachments.push({ url, name: filename });
+      addAttachmentThumbnail(url, filename);
+      attached++;
+    }
+  });
+  if (savedInfo) savedInfo.textContent = `Attachments: ${assetsMap[currentAsset].attachments.length}`;
+  if (attached) alert(`${attached} image(s) attached to ${currentAsset}.`);
+  hideModal(filePickerModal);
+});
+
+/* file card click toggles checkbox */
+if (filePickerGrid) filePickerGrid.addEventListener('click', (ev)=>{
+  let node = ev.target;
+  while (node && !node.classList.contains('fileCard')) node = node.parentElement;
+  if (node){
+    const cb = node.querySelector('input[type=checkbox]');
+    if (cb) cb.checked = !cb.checked;
+  }
+});
+
+/* Escape to close modals */
+document.addEventListener('keydown', (e)=>{
+  if (e.key === 'Escape') {
+    if (filePickerModal && filePickerModal.classList.contains('show')) hideModal(filePickerModal);
+    else if (assetModal && assetModal.classList.contains('show')) { hideModal(assetModal); stopCamera(); }
+  }
+});
+
+/* --- Persistence --- */
+function saveToLocal(){ try { localStorage.setItem('AssetRetrieverData', JSON.stringify(assetsMap)); } catch(e){console.error('Save failed',e);} }
+function loadFromLocal(){ try { const json = localStorage.getItem('AssetRetrieverData'); if (!json) return; assetsMap = JSON.parse(json); renderAssetButtons(); } catch(e){console.error('Load failed',e);} }
+function clearLocal(){ localStorage.removeItem('AssetRetrieverData'); assetsMap={}; renderAssetButtons(); }
+window.addEventListener('DOMContentLoaded', loadFromLocal);
+
+/* Export single asset (safe) */
+function exportAsset(assetId){
+  const data = assetsMap[assetId];
+  if (!data) return alert('No data for this asset.');
+  const desc = data.description || '';
+  const depotMatch = desc.match(/\b(Walworth|Battersea|Edgware|Willesden|Perivale|Camberwell|Stockwell)\b/i);
+  const depot = depotMatch ? depotMatch[0] : 'UnknownDepot';
+  const date = new Date().toISOString().split('T')[0];
+  const filename = `${assetId}_${date}_${depot}.json`;
+  const content = JSON.stringify(data, null, 2);
+  const blob = new Blob([content], { type:'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+}
+
+/* create an export button and append safely */
+const modalHeaderControls = document.getElementById('modalHeaderControls');
+if (modalHeaderControls) {
+  const exportBtn = document.createElement('button');
+  exportBtn.textContent = 'Export';
+  exportBtn.className = 'small';
+  exportBtn.addEventListener('click', ()=>{
+    if (!currentAsset) return alert('No asset open.');
+    exportAsset(currentAsset);
+  });
+  modalHeaderControls.insertBefore(exportBtn, modalHeaderControls.firstChild);
+}
+
+/* DAF export/import/send */
+bindIf(exportAllBtn,'click', ()=>{
+  try {
+    const blob = new Blob([JSON.stringify(assetsMap, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toISOString().split('T')[0];
+    a.href = url;
+    a.download = `AssetRetriever_${date}.daf`;
+    a.click();
+  } catch (err) { alert('Error exporting DAF: ' + err.message); }
+});
+
+bindIf(importDafBtn,'click', ()=> importDafInput.click());
+if (importDafInput) importDafInput.addEventListener('change', (e)=>{
+  const file = e.target.files && e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const imported = JSON.parse(ev.target.result);
+      if (typeof imported !== 'object') throw new Error('Invalid DAF format');
+      assetsMap = imported;
+      saveToLocal();
+      renderAssetButtons();
+      alert('DAF imported successfully.');
+    } catch (err) { alert('Import failed: ' + err.message); }
+  };
+  reader.readAsText(file);
+});
+
+bindIf(sendEmailBtn,'click', ()=>{
+  const email = prompt('Enter support email address:', 'support@example.com');
+  if (!email) return;
+  try {
+    const subject = encodeURIComponent('Asset Retriever Data Export');
+    const body = encodeURIComponent('Attached is your exported .daf JSON archive.\n\nIf images exist, they are base64 encoded inside.');
+    const blob = new Blob([JSON.stringify(assetsMap, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const filename = `AssetRetriever_${new Date().toISOString().split('T')[0]}.daf`;
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+    window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+    alert('DAF exported and email draft opened.');
+  } catch (err) { alert('Failed to send: ' + err.message); }
+});
+
+/* Camera helpers (safe no-op if page doesn't include camera UI) */
+function stopCamera(){ if (cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; } }
+
+/* Prevent accidental background scroll while modal open */
+[assetModal, filePickerModal].forEach(m => { if (!m) return; m.addEventListener('wheel', (e) => e.stopPropagation(), { passive: false }); });
+/* --- Camera Controls (restored) --- */
+const openCameraBtn = document.getElementById('openCamera');
+const takePhotoBtn = document.getElementById('takePhoto');
+const stopCameraBtn = document.getElementById('stopCamera');
+const cameraView = document.getElementById('cameraView');
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  if (cameraView) {
+    cameraView.srcObject = null;
+    cameraView.style.display = 'none';
+  }
+  if (takePhotoBtn) takePhotoBtn.style.display = 'none';
+  if (stopCameraBtn) stopCameraBtn.style.display = 'none';
+}
+
+if (openCameraBtn) openCameraBtn.addEventListener('click', async () => {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    cameraView.srcObject = cameraStream;
+    cameraView.style.display = 'block';
+    takePhotoBtn.style.display = 'inline-block';
+    stopCameraBtn.style.display = 'inline-block';
+  } catch (err) {
+    alert('Unable to access camera: ' + err.message);
+  }
+});
+
+if (takePhotoBtn) takePhotoBtn.addEventListener('click', () => {
+  if (!cameraStream || !currentAsset) return alert('Open an asset first and start the camera.');
+  const track = cameraStream.getVideoTracks()[0];
+  const settings = track.getSettings();
+  const canvas = document.createElement('canvas');
+  canvas.width = cameraView.videoWidth || (settings.width || 1280);
+  canvas.height = cameraView.videoHeight || (settings.height || 720);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(cameraView, 0, 0, canvas.width, canvas.height);
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const filename = `${currentAsset}-photo-${Date.now()}.png`;
+    assetsMap[currentAsset].attachments.push({ url, name: filename });
+    addAttachmentThumbnail(url, filename);
+    if (savedInfo) savedInfo.textContent = `Attachments: ${assetsMap[currentAsset].attachments.length}`;
+    saveToLocal();
+  }, 'image/png');
+  stopCamera();
+});
+
+if (stopCameraBtn) stopCameraBtn.addEventListener('click', stopCamera);
+
+</script>
+</body>
+          </html>
